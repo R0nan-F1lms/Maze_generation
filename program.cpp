@@ -1,5 +1,6 @@
 #include "splashkit.h"
 #include <vector>
+#include <cstdlib> // Include for random number generation
 
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 600
@@ -10,7 +11,8 @@ using namespace std;
 enum class TileType
 {
     BLACK,
-    WHITE
+    WHITE,
+    RED // Added red color for walls
 };
 
 struct Tile
@@ -20,28 +22,46 @@ struct Tile
 
 vector<vector<Tile>> grid;
 
-void create_checkered_board()
+void create_checkered_board_with_maze()
 {
     int rows = SCREEN_HEIGHT / TILE_SIZE;
     int cols = SCREEN_WIDTH / TILE_SIZE;
 
     grid.clear();
-    grid.resize(rows, vector<Tile>(cols));
+    grid.resize(rows, vector<Tile>(cols, {TileType::WHITE})); // Initialize all tiles as white
 
-    for (int i = 0; i < rows; ++i)
+    // Start from the middle of the top edge
+    int row = 0;
+    int col = cols / 2;
+
+    // Maze generation algorithm
+    while (row >= 0 && row < rows)
     {
-        for (int j = 0; j < cols; ++j)
+        grid[row][col].type = TileType::BLACK; // Mark the current cell as visited
+
+        // Move towards the center while making random turns
+        int direction = rnd(3); // 0: left, 1: straight, 2: right
+
+        if (direction == 0 && col > 0 && grid[row][col - 1].type != TileType::BLACK)
         {
-            // Alternate between black and white tiles based on row and column indices
-            if ((i + j) % 2 == 0)
-                grid[i][j].type = TileType::BLACK;
-            else
-                grid[i][j].type = TileType::WHITE;
+            col--;
+        }
+        else if (direction == 2 && col < cols - 1 && grid[row][col + 1].type != TileType::BLACK)
+        {
+            col++;
+        }
+
+        row++;
+
+        // Ensure that the path cannot cross to the opposite edge
+        if (row < rows)
+        {
+            grid[row][col].type = TileType::BLACK;
         }
     }
 }
 
-void draw_checkered_board()
+void draw_checkered_board_with_maze()
 {
     for (int i = 0; i < grid.size(); ++i)
     {
@@ -50,28 +70,36 @@ void draw_checkered_board()
             float x = j * TILE_SIZE;
             float y = i * TILE_SIZE;
 
-            // Draw black or white tiles based on TileType
-            if (grid[i][j].type == TileType::BLACK)
+            // Draw tiles based on TileType
+            switch (grid[i][j].type)
+            {
+            case TileType::BLACK:
                 fill_rectangle(COLOR_BLACK, x, y, x + TILE_SIZE, y + TILE_SIZE);
-            else
+                break;
+            case TileType::WHITE:
                 fill_rectangle(COLOR_WHITE, x, y, x + TILE_SIZE, y + TILE_SIZE);
+                break;
+            case TileType::RED: // Draw walls as red
+                fill_rectangle(COLOR_RED, x, y, x + TILE_SIZE, y + TILE_SIZE);
+                break;
+            }
         }
     }
 }
 
 int main()
 {
-    open_window("Checkered Board", SCREEN_WIDTH, SCREEN_HEIGHT);
-    create_checkered_board();
+    open_window("Checkered Board with Maze", SCREEN_WIDTH, SCREEN_HEIGHT);
+    create_checkered_board_with_maze();
 
-    while (!window_close_requested("Checkered Board"))
+    while (!window_close_requested("Checkered Board with Maze"))
     {
         process_events();
         clear_screen(COLOR_WHITE);
-        draw_checkered_board();
+        draw_checkered_board_with_maze();
         refresh_screen(60);
     }
 
-    close_window("Checkered Board");
+    close_window("Checkered Board with Maze");
     return 0;
 }
