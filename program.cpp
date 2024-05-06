@@ -1,18 +1,13 @@
 #include "splashkit.h"
-#include <vector>
-#include <cstdlib> // Include for random number generation
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
 #define TILE_SIZE 40
-
-using namespace std;
 
 enum class TileType
 {
-    BLACK,
-    WHITE,
-    RED // Added red color for walls
+    WALL,
+    PATH,
+    START,
+    END
 };
 
 struct Tile
@@ -20,67 +15,51 @@ struct Tile
     TileType type;
 };
 
-vector<vector<Tile>> grid;
+std::vector<std::vector<Tile>> maze;
 
-void create_checkered_board_with_maze()
+void initialize_maze(int rows, int cols)
 {
-    int rows = SCREEN_HEIGHT / TILE_SIZE;
-    int cols = SCREEN_WIDTH / TILE_SIZE;
+    maze.clear();
+    maze.resize(rows, std::vector<Tile>(cols, {TileType::WALL}));
 
-    grid.clear();
-    grid.resize(rows, vector<Tile>(cols, {TileType::WHITE})); // Initialize all tiles as white
-
-    // Start from the middle of the top edge
-    int row = 0;
-    int col = cols / 2;
-
-    // Maze generation algorithm
-    while (row >= 0 && row < rows)
-    {
-        grid[row][col].type = TileType::BLACK; // Mark the current cell as visited
-
-        // Move towards the center while making random turns
-        int direction = rnd(3); // 0: left, 1: straight, 2: right
-
-        if (direction == 0 && col > 0 && grid[row][col - 1].type != TileType::BLACK)
-        {
-            col--;
-        }
-        else if (direction == 2 && col < cols - 1 && grid[row][col + 1].type != TileType::BLACK)
-        {
-            col++;
-        }
-
-        row++;
-
-        // Ensure that the path cannot cross to the opposite edge
-        if (row < rows)
-        {
-            grid[row][col].type = TileType::BLACK;
-        }
-    }
+    // Set start and end points
+    maze[rnd(rows)][0].type = TileType::START;
+    maze[rnd(rows)][cols - 1].type = TileType::END;
 }
 
-void draw_checkered_board_with_maze()
+void generate_path(int row, int col, int rows, int cols)
 {
-    for (int i = 0; i < grid.size(); ++i)
-    {
-        for (int j = 0; j < grid[i].size(); ++j)
-        {
-            float x = j * TILE_SIZE;
-            float y = i * TILE_SIZE;
+    if (row < 0 || row >= rows || col < 0 || col >= cols || maze[row][col].type != TileType::WALL)
+        return;
 
-            // Draw tiles based on TileType
-            switch (grid[i][j].type)
+    maze[row][col].type = TileType::PATH;
+
+    if (col < cols - 1)
+        generate_path(row, col + 1, rows, cols); // Move right
+}
+
+void draw_maze(int rows, int cols)
+{
+    for (int row = 0; row < rows; ++row)
+    {
+        for (int col = 0; col < cols; ++col)
+        {
+            float x = col * TILE_SIZE;
+            float y = row * TILE_SIZE;
+
+            switch (maze[row][col].type)
             {
-            case TileType::BLACK:
-                fill_rectangle(COLOR_BLACK, x, y, x + TILE_SIZE, y + TILE_SIZE);
+            case TileType::WALL:
+                fill_rectangle(COLOR_BLACK, x, y, TILE_SIZE, TILE_SIZE);
                 break;
-            case TileType::WHITE:
-                fill_rectangle(COLOR_WHITE, x, y, x + TILE_SIZE, y + TILE_SIZE);
+            case TileType::PATH:
+                fill_rectangle(COLOR_WHITE, x, y, TILE_SIZE, TILE_SIZE);
                 break;
-            case TileType::RED: // Draw walls as red
-                fill_rectangle(COLOR_RED, x, y, x + TILE_SIZE, y + TILE_SIZE);
+            case TileType::START:
+                fill_rectangle(COLOR_GREEN, x, y, TILE_SIZE, TILE_SIZE);
+                break;
+            case TileType::END:
+                fill_rectangle(COLOR_RED, x, y, TILE_SIZE, TILE_SIZE);
                 break;
             }
         }
@@ -89,17 +68,22 @@ void draw_checkered_board_with_maze()
 
 int main()
 {
-    open_window("Checkered Board with Maze", SCREEN_WIDTH, SCREEN_HEIGHT);
-    create_checkered_board_with_maze();
+    open_window("Maze Generator", 800, 600);
 
-    while (!window_close_requested("Checkered Board with Maze"))
+    int rows = screen_height() / TILE_SIZE;
+    int cols = screen_width() / TILE_SIZE;
+
+    initialize_maze(rows, cols);
+    generate_path(rnd(rows), 0, rows, cols);
+
+    while (!window_close_requested("Maze Generator"))
     {
         process_events();
-        clear_screen(COLOR_WHITE);
-        draw_checkered_board_with_maze();
+        clear_screen(COLOR_BLACK);
+        draw_maze(rows, cols);
         refresh_screen(60);
     }
 
-    close_window("Checkered Board with Maze");
+    close_window("Maze Generator");
     return 0;
 }
