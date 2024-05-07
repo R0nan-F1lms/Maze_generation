@@ -4,7 +4,8 @@ const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
 const int TILE_SIZE = 40;
 const int BORDER_THICKNESS = 1;
-const int MIN_DISTANCE = 6; // Minimum distance between start and end tiles
+const int MIN_DISTANCE = 6;      // Minimum distance between start and end tiles
+const int MAX_PATH_LENGTH = 500; // Maximum path length
 
 enum class TileType
 {
@@ -12,8 +13,7 @@ enum class TileType
     ORANGE,
     START,
     END,
-    BLOCK,
-    CORNER_BLOCK // New tile type for corner blocks
+    WALKED // New tile type for walked path
 };
 
 struct Tile
@@ -22,30 +22,25 @@ struct Tile
 
     bool is_traversable() const
     {
-        return type != TileType::ORANGE && type != TileType::BLOCK && type != TileType::CORNER_BLOCK;
+        return type != TileType::ORANGE && type != TileType::WALKED && type != TileType::END;
     }
-};
-
-struct Player
-{
-    int x, y;
 };
 
 struct App
 {
-    Player player;
     Tile tiles[SCREEN_WIDTH / TILE_SIZE][SCREEN_HEIGHT / TILE_SIZE];
     int start_row, start_col;
     int end_row, end_col;
+    int path_length;
 };
 
 App app;
 
 void setup(App &app);
 void draw_tiles(const App &app);
-void handle_input(App &app);
-void move_player(App &app, int dx, int dy);
-void spawn_corner_blocks(App &app); // Function to spawn corner blocks
+void move_player(App &app);
+bool is_valid_move(Tile tiles[][SCREEN_HEIGHT / TILE_SIZE], int x, int y);
+void move(int x, int y);
 
 int main()
 {
@@ -57,7 +52,7 @@ int main()
         process_events();
         clear_screen(COLOR_BLACK);
 
-        handle_input(app);
+        move_player(app);
         draw_tiles(app);
 
         refresh_screen(60);
@@ -98,12 +93,8 @@ void setup(App &app)
     } while (abs(app.end_col - app.start_col) < MIN_DISTANCE);
     app.tiles[app.end_col][app.end_row].type = TileType::END;
 
-    // Set player initial position to start tile
-    app.player.x = app.start_col * TILE_SIZE;
-    app.player.y = app.start_row * TILE_SIZE;
-
-    // Spawn corner blocks
-    spawn_corner_blocks(app);
+    // Initialize path length
+    app.path_length = 0;
 }
 
 void draw_tiles(const App &app)
@@ -129,77 +120,272 @@ void draw_tiles(const App &app)
             case TileType::END:
                 fill_rectangle(COLOR_RED, x, y, TILE_SIZE, TILE_SIZE);
                 break;
-            case TileType::BLOCK:
-                fill_rectangle(COLOR_ORANGE, x, y, TILE_SIZE, TILE_SIZE);
-                break;
-            case TileType::CORNER_BLOCK: // New case for corner blocks
-                fill_rectangle(COLOR_PINK, x, y, TILE_SIZE, TILE_SIZE);
+            case TileType::WALKED:
+                fill_rectangle(COLOR_GRAY, x, y, TILE_SIZE, TILE_SIZE);
                 break;
             }
         }
     }
-
-    // Draw player
-    fill_circle(COLOR_YELLOW, app.player.x + TILE_SIZE / 2, app.player.y + TILE_SIZE / 2, TILE_SIZE / 4);
 }
 
-void handle_input(App &app)
+void move_player(App &app)
 {
-    if (key_typed(D_KEY))
+    // If the path is already too long or the player has reached the end, stop moving
+    if (app.path_length >= MAX_PATH_LENGTH || (app.start_col == app.end_col && app.start_row == app.end_row))
     {
-        move_player(app, TILE_SIZE, 0);
+        printf("Path is too long or player has reached the end. Stopping movement.\n");
+        return;
     }
-    else if (key_typed(A_KEY))
+
+    int dx = 0, dy = 0;
+
+    // Calculate the direction towards the end tile
+    if (app.start_col < app.end_col)
     {
-        move_player(app, -TILE_SIZE, 0);
-    }
-    else if (key_typed(W_KEY))
-    {
-        move_player(app, 0, -TILE_SIZE);
-    }
-    else if (key_typed(S_KEY))
-    {
-        move_player(app, 0, TILE_SIZE);
-    }
-}
-
-void move_player(App &app, int dx, int dy)
-{
-    int new_x = app.player.x + dx;
-    int new_y = app.player.y + dy;
-
-    int tile_x = new_x / TILE_SIZE;
-    int tile_y = new_y / TILE_SIZE;
-
-    if (new_x >= 0 && new_x < SCREEN_WIDTH && new_y >= 0 && new_y < SCREEN_HEIGHT &&
-        app.tiles[tile_x][tile_y].is_traversable())
-    {
-        app.player.x = new_x;
-        app.player.y = new_y;
-    }
-}
-
-void spawn_corner_blocks(App &app)
-{
-    // Define the coordinates of the corners
-    const int corners[4][2] = {
-        {0, 0},                                          // Top-left corner
-        {SCREEN_WIDTH / TILE_SIZE - 1, 0},               // Top-right corner
-        {0, SCREEN_HEIGHT / TILE_SIZE - 1},              // Bottom-left corner
-        {SCREEN_WIDTH / TILE_SIZE - 1, SCREEN_HEIGHT / TILE_SIZE - 1} // Bottom-right corner
-    };
-
-    // Spawn corner blocks
-    for (int i = 0; i < 4; ++i)
-    {
-        int corner_x = corners[i][0];
-        int corner_y = corners[i][1];
-
-        // Check if the corner block overlaps with the start or end tiles
-        if ((corner_x != app.start_col || corner_y != app.start_row) &&
-            (corner_x != app.end_col || corner_y != app.end_row))
+        printf("Moving right towards end tile.\n");
+        dx = 1;
+        // Check if the move to the right is valid
+        if (!is_valid_move(app.tiles, app.start_col + dx, app.start_row))
         {
-            app.tiles[corner_x][corner_y].type = TileType::CORNER_BLOCK;
+            // Check if moving up is valid
+            if (is_valid_move(app.tiles, app.start_col, app.start_row - 1))
+            {
+                printf("Cannot move right. Moving up instead.\n");
+                move(-1, 0);
+            }
+            // If moving up is not valid, try moving down
+            else if (is_valid_move(app.tiles, app.start_col, app.start_row + 1))
+            {
+                printf("Cannot move right or up. Moving down instead.\n");
+                move(1, 0);
+            }
+            // If neither up nor down is valid, stay in place
+            else
+            {
+                printf("Cannot move right or up or down. Staying in place.\n");
+                move(0, 0);
+            }
+        } else {
+            move(1, 0);
         }
     }
+    else if (app.start_col > app.end_col)
+    {
+        printf("Moving left towards end tile.\n");
+        dx = -1;
+        // Check if the move to the left is valid
+        if (!is_valid_move(app.tiles, app.start_col + dx, app.start_row))
+        {
+            // Check if moving up is valid
+            if (is_valid_move(app.tiles, app.start_col, app.start_row - 1))
+            {
+                printf("Cannot move left. Moving up instead.\n");
+                move(-1, 0);
+            }
+            // If moving up is not valid, try moving down
+            else if (is_valid_move(app.tiles, app.start_col, app.start_row + 1))
+            {
+                printf("Cannot move left or up. Moving down instead.\n");
+                move(1, 0);
+            }
+            // If neither up nor down is valid, stay in place
+            else
+            {
+                printf("Cannot move left or up or down. Staying in place.\n");
+                move(0, 0);
+            }
+        }
+        else {
+            move(-1, 0);
+        }
+    }
+    else if (app.start_row < app.end_row)
+    {
+        printf("Moving down towards end tile.\n");
+        dy = 1;
+        // Check if moving down is valid
+        if (!is_valid_move(app.tiles, app.start_col, app.start_row + dy))
+        {
+            // Check if moving right is valid
+            if (is_valid_move(app.tiles, app.start_col + 1, app.start_row))
+            {
+                printf("Cannot move down. Moving right instead.\n");
+                move(1, 0);
+            }
+            // If moving right is not valid, try moving left
+            else if (is_valid_move(app.tiles, app.start_col - 1, app.start_row))
+            {
+                printf("Cannot move down or right. Moving left instead.\n");
+                move(-1, 0);
+            }
+            // If neither right nor left is valid, stay in place
+            else
+            {
+                printf("Cannot move down or right or left. Staying in place.\n");
+                move(0, 0);
+            }
+        } else {
+            move(0, 1);
+        }
+    }
+    else if (app.start_row > app.end_row)
+    {
+        printf("Moving up towards end tile.\n");
+        dy = -1;
+        // Check if moving up is valid
+        if (!is_valid_move(app.tiles, app.start_col, app.start_row + dy))
+        {
+            // Check if moving right is valid
+            if (is_valid_move(app.tiles, app.start_col + 1, app.start_row))
+            {
+                printf("Cannot move up. Moving right instead.\n");
+                move(1, 0);
+            }
+            // If moving right is not valid, try moving left
+            else if (is_valid_move(app.tiles, app.start_col - 1, app.start_row))
+            {
+                printf("Cannot move up or right. Moving left instead.\n");
+                move(-1, 0);
+            }
+            // If neither right nor left is valid, stay in place
+            else
+            {
+                printf("Cannot move up or right or left. Staying in place.\n");
+                move(0, 1);
+            }
+        } else {
+            move(0, -1);
+        }
+    }
+
+    // Check if the new position is within the screen bounds and the tile is traversable
+    if (app.tiles[app.start_col + dx][app.start_row + dy].type != TileType::ORANGE &&
+        app.tiles[app.start_col + dx][app.start_row + dy].type != TileType::WALKED)
+    {
+        move(dx, dy);
+
+        printf("Moved to (%d, %d).\n", app.start_col, app.start_row);
+    }
+    else
+    {
+        printf("Cannot move to (%d, %d) because it is an orange tile or already walked. Choosing another direction.\n", app.start_col + dx, app.start_row + dy);
+
+        // Choose another direction if possible
+        if (is_valid_move(app.tiles, app.start_col + 1, app.start_row))
+        {
+            printf("Trying to move right instead.\n");
+            move(1, 0);
+        }
+        else if (is_valid_move(app.tiles, app.start_col - 1, app.start_row))
+        {
+            printf("Trying to move left instead.\n");
+            move(-1, 0);
+        }
+        else if (is_valid_move(app.tiles, app.start_col, app.start_row + 1))
+        {
+            printf("Trying to move down instead.\n");
+            move(0, 1);
+        }
+        else if (is_valid_move(app.tiles, app.start_col, app.start_row - 1))
+        {
+            printf("Trying to move up instead.\n");
+            move(0, -1);
+        }
+        else
+        {
+            printf("Cannot move to (%d, %d) because it is an orange tile or already walked. Choosing another direction.\n", app.start_col + dx, app.start_row + dy);
+
+            // Choose another direction if possible
+            if (is_valid_move(app.tiles, app.start_col, app.start_row + 1))
+            {
+                printf("Trying to move right instead.\n");
+                move(1, 0);
+            }
+            else if (is_valid_move(app.tiles, app.start_col - 1, app.start_row))
+            {
+                printf("Trying to move left instead.\n");
+                move(-1, 0);
+            }
+            else if (is_valid_move(app.tiles, app.start_col, app.start_row + 1))
+            {
+                printf("Trying to move down instead.\n");
+                move(0, 1);
+            }
+            else if (is_valid_move(app.tiles, app.start_col, app.start_row - 1))
+            {
+                printf("Trying to move up instead.\n");
+                move(0, -1);
+            }
+            else
+            {
+                printf("No valid moves available. Staying in place.\n");
+                move(0, 0);
+            }
+
+        }
+    }
+}
+
+// bool is_traversable(App &app, int x, int y) {
+//     if (x < 0 || y < 0 || x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT) return false;
+//     return app.tiles[x / TILE_SIZE][y / TILE_SIZE].type != ORANGE;
+// }
+
+void move(int x, int y)
+{
+// Check if the new position is within the screen bounds and the tile is traversable
+            if (app.tiles[app.start_col + x][app.start_row + y].type != TileType::ORANGE &&
+                app.tiles[app.start_col + x][app.start_row + y].type != TileType::WALKED)
+            {
+                // Update the path
+                app.tiles[app.start_col + x][app.start_row + y].type = TileType::WALKED;
+                app.path_length++;
+
+                // Update the start position
+                app.start_col += x;
+                app.start_row += y;
+
+                printf("Moved to (%d, %d).\n", app.start_col, app.start_row);
+            }
+            else
+            {
+                printf("Cannot move to (%d, %d) because it is an orange tile or already walked. Staying in place.\n", app.start_col + x, app.start_row + y);
+            }
+}
+
+bool is_valid_move(Tile tiles[][SCREEN_HEIGHT / TILE_SIZE], int x, int y)
+{
+    // Check if any adjacent tile is traversable and not a border tile
+    for (int i = -1; i <= 1; ++i)
+    {
+        for (int j = -1; j <= 1; ++j)
+        {
+            int adj_x = x + i;
+            int adj_y = y + j;
+
+            // Skip the current tile
+            if (i == 0 && j == 0)
+            {
+                continue;
+            }
+            else if (i * j == 1 || i * j == -1)
+            {
+                printf("I: %d and J: %d are -1 or positive one: trying to move diagonal\n", i, j);
+                continue;
+            }
+            else
+            {
+                // Check if the adjacent tile is within bounds and traversable
+                if (x > 0 && y > 0 && x <= SCREEN_WIDTH && y <= SCREEN_HEIGHT &&
+                    tiles[adj_x][adj_y].type != TileType::ORANGE)
+                {
+                    printf("Everything is true Returning true for is valid move.\n");
+                    return true;
+                }
+            }
+        }
+    }
+
+    // If no adjacent tile is traversable, or if all adjacent tiles are borders, the move is invalid
+    return false;
 }
